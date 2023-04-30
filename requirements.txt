@@ -1,0 +1,3 @@
+wpparser
+markdownify
+argparse
