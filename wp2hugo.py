@@ -9,11 +9,17 @@ import urllib.parse
 import html
 
 class ImageBlockConverter(MarkdownConverter):
-    def convert_img(self, el, text, convert_as_inline):
+    def __init__(self, **options):
+        super().__init__(**options)
+        self.cover_image = None
+
+    def convert_img(self, el, text, convert_as_inline):        
         url = el.attrs['src']
         if url.startswith(self.options['blog_url']) or url.startswith(self.options['blog_url'].replace('https', 'http')):
             self.download_resource(url)
             el.attrs['src'] = url.split('/')[-1]
+            # treat first image as cover
+            if not self.cover_image: self.cover_image = el.attrs['src']
         return super().convert_img(el, text, convert_as_inline)
 
     def convert_a(self, el, text, convert_as_inline):
@@ -57,17 +63,25 @@ class WP2Hugo:
         page = f"{self.output_folder}/content/posts/{post_name}/" 
         title = self.format_markdown(post['title']) 
         tags = list(map( lambda c: self.format_markdown(c), post['categories']))
-        content = ImageBlockConverter(blog_url=self.blog_url, page = page).convert(post['content'])
+        converter = ImageBlockConverter(blog_url=self.blog_url, page = page)
+        content = converter.convert(post['content'])
+
+        # get cover, if present
+        cover_section = f"cover:\n   image: {converter.cover_image}\n" if converter.cover_image else ''
         
-        # Get image list
+
+        
+        # get image list
         resource_list = '\n'.join([f"   - src: {f.name}" for f in os.scandir(page) if f.name != 'index.md' ])
 
         return f"""---
+id: {post['post_id']}
 title: '{title}'
+url: {post_name}
 date: { post['post_date_gmt'] }
 draft: false
 tags: {tags}
-resources:
+{cover_section}resources:
 {resource_list}
 ---
 {content}"""
@@ -78,5 +92,5 @@ if __name__ == "__main__":
     parser.add_argument("xml", help="Wordpress Exported XML")
     parser.add_argument("out", help="Hugo site root folder. Pages are placed in <out>/content/posts")
     args = parser.parse_args()
-    converter = WP2Hugo(args.xml, args.out)
-    converter.convert()
+    wp2hugo = WP2Hugo(args.xml, args.out)
+    wp2hugo.convert()
